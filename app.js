@@ -1,6 +1,6 @@
 import { getFirebaseContext } from "./firebase-client.js";
 import {
-  ref, set, get, update, onValue, runTransaction
+  ref, set, get, update, onValue
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
 import { loadDictionary, normalizeInput, pickRoundTopic, judgeSubmission } from "./dict.js";
 
@@ -15,6 +15,9 @@ let myRole = null; // 'host' | 'guest'
 let myWords = [];
 let timerInterval = null;
 let currentRoomData = null;
+let currentInputRoundIndex = null;
+let submittedRoundIndex = null;
+let judgingRoundIndex = null;
 
 const el = (id) => document.getElementById(id);
 
@@ -105,7 +108,6 @@ function onRoomUpdate(data) {
   if (data.status === "waiting") {
     showScreen("room");
     if (myRole === "host" && data.guestUid) {
-      // ゲスト参加を検知したらホストが最初のラウンドを開始
       startNewRound(data);
     }
     return;
@@ -148,21 +150,65 @@ async function startNewRound(data) {
 
 // ---------- 入力フェーズ ----------
 function renderInputPhase(data) {
-  showScreen("game");
-  myWords = [];
-  el("wordList").innerHTML = "";
-  el("wordInput").value = "";
-  el("wordInput").disabled = false;
-  el("addWordBtn").disabled = false;
+  const round = data.round;
+  const roundIndex = round.index;
+  const isNewRound = currentInputRoundIndex !== roundIndex;
+  const mySubmission = round.submissions?.[uid];
 
-  el("topicChar").textContent = data.round.char;
-  el("topicPosition").textContent = data.round.position;
-  el("roundIndexLabel").textContent = data.round.index;
+  showScreen("game");
+  el("topicChar").textContent = round.char;
+  el("topicPosition").textContent = round.position;
+  el("roundIndexLabel").textContent = roundIndex;
   renderScoreGauge(data.scoreDiff);
 
-  startTimer(data.round.startAt, data.round.duration, () => {
-    onInputTimeUp(data);
+  if (!isNewRound) {
+    // onValue() は提出など同一inputフェーズの更新でも発火する。
+    // ここでは既存の入力内容・タイマーを触らない。
+    return;
+  }
+
+  currentInputRoundIndex = roundIndex;
+  resultRenderedFor = null;
+  if (timerInterval) clearInterval(timerInterval);
+
+  // 新しいラウンドでは、両端末とも結果表示を必ず解除する。
+  el("resultArea").classList.add("hidden");
+  el("inputArea").classList.remove("hidden");
+  el("resultList").innerHTML = "";
+
+  myWords = Array.isArray(mySubmission?.words) ? [...mySubmission.words] : [];
+  renderWordList();
+  el("wordInput").value = "";
+
+  if (mySubmission || submittedRoundIndex === roundIndex) {
+    submittedRoundIndex = roundIndex;
+    lockInput();
+    return;
+  }
+
+  el("wordInput").disabled = false;
+  el("addWordBtn").disabled = false;
+  startTimer(round.startAt, round.duration, () => {
+    onInputTimeUp(roundIndex);
   });
+}
+
+function renderWordList() {
+  const list = el("wordList");
+  list.innerHTML = "";
+  for (const word of myWords) {
+    const li = document.createElement("li");
+    li.textContent = word;
+    list.appendChild(li);
+  }
+  list.scrollTop = list.scrollHeight;
+}
+
+function lockInput() {
+  if (timerInterval) clearInterval(timerInterval);
+  el("wordInput").disabled = true;
+  el("addWordBtn").disabled = true;
+  el("timerLabel").textContent = "0";
 }
 
 function startTimer(startAt, duration, onDone) {
@@ -175,11 +221,12 @@ function startTimer(startAt, duration, onDone) {
     if (remain <= 0 && !done) {
       done = true;
       clearInterval(timerInterval);
+      timerInterval = null;
       onDone();
     }
   };
   tick();
-  timerInterval = setInterval(tick, 200);
+  if (!done) timerInterval = setInterval(tick, 200);
 }
 
 function addWord() {
@@ -195,59 +242,99 @@ function addWord() {
   el("wordList").scrollTop = el("wordList").scrollHeight;
 }
 
-async function onInputTimeUp(data) {
-  el("wordInput").disabled = true;
-  el("addWordBtn").disabled = true;
-  el("timerLabel").textContent = "0";
+async function onInputTimeUp(roundIndex) {
+  // 古いタイマー・onValue()再発火・二重タイムアウトをすべて無害化する。
+  if (submittedRoundIndex === roundIndex) return;
+  const data = currentRoomData;
+  if (
+    !data ||
+    data.status !== "playing" ||
+    data.round?.phase !== "input" ||
+    data.round.index !== roundIndex
+  ) return;
 
-  // 自分の提出を書き込む
-  const myUidPath = `mojidonRooms/${roomId}/round/submissions/${uid}`;
-  await set(ref(db, myUidPath), { words: myWords, submittedAt: Date.now() });
+  submittedRoundIndex = roundIndex;
+  lockInput();
 
-  if (myRole === "host") {
-    judgeAndAdvance();
+  const words = [...myWords];
+  try {
+    const latestSnap = await get(roomRef);
+    const latest = latestSnap.val();
+    if (
+      !latest ||
+      latest.status !== "playing" ||
+      latest.round?.phase !== "input" ||
+      latest.round.index !== roundIndex
+    ) return;
+    if (!latest.round.submissions?.[uid]) {
+      const myUidPath = `mojidonRooms/${roomId}/round/submissions/${uid}`;
+      await set(ref(db, myUidPath), { words, submittedAt: Date.now() });
+    }
+
+    if (myRole === "host") {
+      judgeAndAdvance(roundIndex);
+    }
+  } catch (error) {
+    console.error("提出に失敗しました", error);
+    submittedRoundIndex = null;
+    setStatus("提出に失敗しました。通信状態を確認してください");
   }
 }
 
 // ---------- 判定(ホストのみ) ----------
-async function judgeAndAdvance() {
-  // 両者の提出が揃うまで少し待つ(タイマーのわずかなズレ対策)
-  const snap = await waitForBothSubmissions();
-  const data = snap;
-  const hostUid = data.hostUid;
-  const guestUid = data.guestUid;
-  const hostWords = data.round.submissions?.[hostUid]?.words || [];
-  const guestWords = data.round.submissions?.[guestUid]?.words || [];
-  const topic = { char: data.round.char, position: data.round.position };
+async function judgeAndAdvance(roundIndex) {
+  if (myRole !== "host" || judgingRoundIndex === roundIndex) return;
+  judgingRoundIndex = roundIndex;
 
-  const hostResult = judgeSubmission(hostWords, topic);
-  const guestResult = judgeSubmission(guestWords, topic);
-  const diff = hostResult.validCount - guestResult.validCount;
+  try {
+    const data = await waitForBothSubmissions(roundIndex);
+    if (!data || data.round.phase !== "input" || data.round.index !== roundIndex) return;
 
-  const newScoreDiff = (data.scoreDiff || 0) + diff;
-  const finished = Math.abs(newScoreDiff) >= WIN_SCORE;
+    const hostUid = data.hostUid;
+    const guestUid = data.guestUid;
+    const hostWords = data.round.submissions?.[hostUid]?.words || [];
+    const guestWords = data.round.submissions?.[guestUid]?.words || [];
+    const topic = { char: data.round.char, position: data.round.position };
 
-  const updates = {
-    "round/phase": "result",
-    "round/hostJudged": hostResult.judged,
-    "round/guestJudged": guestResult.judged,
-    "round/hostCount": hostResult.validCount,
-    "round/guestCount": guestResult.validCount,
-    "round/diff": diff,
-    scoreDiff: newScoreDiff
-  };
-  if (finished) {
-    updates.status = "finished";
-    updates.winner = newScoreDiff > 0 ? "host" : "guest";
+    const hostResult = judgeSubmission(hostWords, topic);
+    const guestResult = judgeSubmission(guestWords, topic);
+    const diff = hostResult.validCount - guestResult.validCount;
+    const newScoreDiff = (data.scoreDiff || 0) + diff;
+    const finished = Math.abs(newScoreDiff) >= WIN_SCORE;
+
+    const updates = {
+      "round/phase": "result",
+      "round/hostJudged": hostResult.judged,
+      "round/guestJudged": guestResult.judged,
+      "round/hostCount": hostResult.validCount,
+      "round/guestCount": guestResult.validCount,
+      "round/diff": diff,
+      scoreDiff: newScoreDiff
+    };
+    if (finished) {
+      updates.status = "finished";
+      updates.winner = newScoreDiff > 0 ? "host" : "guest";
+    }
+    await update(roomRef, updates);
+  } finally {
+    if (judgingRoundIndex === roundIndex) judgingRoundIndex = null;
   }
-  await update(roomRef, updates);
 }
 
-function waitForBothSubmissions() {
+function waitForBothSubmissions(roundIndex) {
   return new Promise((resolve) => {
     const check = async () => {
       const snap = await get(roomRef);
       const data = snap.val();
+      if (
+        !data ||
+        data.status !== "playing" ||
+        data.round?.index !== roundIndex ||
+        data.round.phase !== "input"
+      ) {
+        resolve(null);
+        return;
+      }
       const hostSub = data.round.submissions?.[data.hostUid];
       const guestSub = data.round.submissions?.[data.guestUid];
       if (hostSub && guestSub) {
@@ -266,6 +353,7 @@ let resultRenderedFor = null;
 function renderResultPhase(data) {
   showScreen("game");
   if (timerInterval) clearInterval(timerInterval);
+  timerInterval = null;
   el("timerLabel").textContent = "-";
 
   const key = `${data.round.index}`;
@@ -313,14 +401,13 @@ function renderResultPhase(data) {
 async function nextRound() {
   const snap = await get(roomRef);
   const data = snap.val();
-  resultRenderedFor = null;
-  el("resultArea").classList.add("hidden");
-  el("inputArea").classList.remove("hidden");
   startNewRound(data);
 }
 
 // ---------- 終了画面 ----------
 function renderFinished(data) {
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = null;
   showScreen("finished");
   const isHost = myRole === "host";
   const iWon = (data.winner === "host" && isHost) || (data.winner === "guest" && !isHost);
@@ -337,6 +424,9 @@ async function rematch() {
     winner: null,
     round: null
   });
+  currentInputRoundIndex = null;
+  submittedRoundIndex = null;
+  judgingRoundIndex = null;
   resultRenderedFor = null;
   showScreen("room");
 }
