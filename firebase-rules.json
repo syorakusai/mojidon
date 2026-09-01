@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "mojidonRooms": {
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.child('hostUid').val() == auth.uid) || (data.exists() && ((data.child('hostUid').val() == auth.uid) || (data.child('status').val() == 'waiting' && !data.child('guestUid').exists() && newData.child('guestUid').val() == auth.uid) || (auth.uid == data.child('guestUid').val() && data.child('round').exists() && newData.child('round').child('submissions').child(auth.uid).exists()))))"
+      }
+    }
+  }
+}

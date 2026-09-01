@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>もじどん</title>
+  <rect width="512" height="512" fill="#e8dfc8"/>
+  <rect x="52" y="52" width="408" height="408" rx="72" fill="#211c17"/>
+  <circle cx="256" cy="256" r="150" fill="#a6332e"/>
+  <text x="256" y="296" font-family="serif" font-size="150" fill="#f4efdf" text-anchor="middle">文</text>
+</svg>

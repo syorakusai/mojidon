@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>もじどん</title>
+<meta name="theme-color" content="#211C17">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Shippori+Mincho:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="app-title">
+    <h1>もじどん</h1>
+    <p id="statusLine" class="status-line"></p>
+  </header>
+
+  <!-- タイトル画面 -->
+  <section class="screen active" id="screen-title">
+    <div class="card">
+      <label class="field-label">なまえ</label>
+      <input type="text" id="nameInput" placeholder="プレイヤー名" maxlength="10">
+    </div>
+
+    <div class="card">
+      <button class="primary-btn" id="createRoomBtn">ルームを作る</button>
+    </div>
+
+    <div class="card">
+      <label class="field-label">ルームIDで参加</label>
+      <input type="text" id="roomIdInput" placeholder="例: A1B2C" maxlength="8" style="text-transform:uppercase;">
+      <button class="primary-btn ghost" id="joinRoomBtn">参加する</button>
+    </div>
+  </section>
+
+  <!-- ルーム待機画面 -->
+  <section class="screen" id="screen-room">
+    <div class="card center">
+      <div class="field-label">ルームID</div>
+      <div class="room-id-display">
+        <span id="roomIdLabel">-</span>
+        <button id="copyRoomIdBtn" class="mini-btn">コピー</button>
+      </div>
+      <p class="hint">このIDを相手に伝えてください</p>
+    </div>
+    <div class="card">
+      <div class="vs-row">
+        <div class="vs-player"><div class="vs-label">ホスト</div><div id="hostNameLabel">-</div></div>
+        <div class="vs-mark">VS</div>
+        <div class="vs-player"><div class="vs-label">ゲスト</div><div id="guestNameLabel">(待機中)</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ゲーム画面 -->
+  <section class="screen" id="screen-game">
+    <div class="card center">
+      <div class="round-label">第<span id="roundIndexLabel">1</span>ラウンド</div>
+      <div class="topic-display">
+        <span id="topicPosition">3</span>文字目に「<span id="topicChar">か</span>」が入る言葉
+      </div>
+      <div class="timer-display"><span id="timerLabel">30</span>秒</div>
+    </div>
+
+    <div class="score-gauge-wrap card">
+      <div class="score-gauge">
+        <div class="gauge-fill" id="gaugeFill"></div>
+        <div class="gauge-center-line"></div>
+      </div>
+      <div class="gauge-label" id="gaugeLabel">互角</div>
+    </div>
+
+    <div class="card" id="inputArea">
+      <div class="input-row">
+        <input type="text" id="wordInput" placeholder="ひらがなで単語を入力">
+        <button id="addWordBtn" class="mini-btn">追加</button>
+      </div>
+      <ul class="word-list" id="wordList"></ul>
+    </div>
+
+    <div class="card hidden" id="resultArea">
+      <div class="result-summary">
+        <span id="myCountLabel">0</span> 対 <span id="oppCountLabel">0</span>
+      </div>
+      <div class="round-diff" id="roundDiffLabel"></div>
+      <div class="result-list" id="resultList"></div>
+      <button class="primary-btn hidden" id="nextRoundBtn">次のラウンドへ</button>
+      <p class="hint hidden" id="waitingHostLabel">ホストが次のラウンドを開始します…</p>
+    </div>
+  </section>
+
+  <!-- 終了画面 -->
+  <section class="screen" id="screen-finished">
+    <div class="card center">
+      <div class="finished-title" id="finishedTitle">勝利！</div>
+      <div class="finished-sub" id="finishedSub"></div>
+      <button class="primary-btn hidden" id="rematchBtn">もう一度</button>
+      <p class="hint hidden" id="rematchWaitLabel">ホストの再戦を待っています…</p>
+    </div>
+  </section>
+
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "id": "./",
+  "name": "もじどん",
+  "short_name": "もじどん",
+  "description": "指定された位置に指定の文字が入る単語を制限時間内に競い合う2人対戦ワードゲーム",
+  "lang": "ja",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#e8dfc8",
+  "theme_color": "#211c17",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
