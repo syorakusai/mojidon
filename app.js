@@ -361,10 +361,12 @@ function renderResultPhase(data) {
   resultRenderedFor = key;
 
   const isHost = myRole === "host";
-  const myJudged = isHost ? data.round.hostJudged : data.round.guestJudged;
-  const oppJudged = isHost ? data.round.guestJudged : data.round.hostJudged;
-  const myCount = isHost ? data.round.hostCount : data.round.guestCount;
-  const oppCount = isHost ? data.round.guestCount : data.round.hostCount;
+  // Firebase Realtime Databaseでは空配列が保存されず、プロパティ自体が
+  // 存在しない場合があるため、0件提出も空配列として描画する。
+  const myJudged = (isHost ? data.round.hostJudged : data.round.guestJudged) || [];
+  const oppJudged = (isHost ? data.round.guestJudged : data.round.hostJudged) || [];
+  const myCount = (isHost ? data.round.hostCount : data.round.guestCount) ?? 0;
+  const oppCount = (isHost ? data.round.guestCount : data.round.hostCount) ?? 0;
 
   el("resultArea").classList.remove("hidden");
   el("inputArea").classList.add("hidden");
