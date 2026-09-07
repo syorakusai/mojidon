@@ -1,9 +1,9 @@
-const CACHE_NAME = 'mojidon-v2';
+const CACHE_NAME = 'mojidon-v3';
 const APP_SHELL = [
   './',
   './index.html',
   './style.css',
-  './app.js',
+  './app.js?v=20260907-1',
   './dict.js',
   './firebase-client.js',
   './firebase-config.js',
