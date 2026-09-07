@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mojidon-v1';
+const CACHE_NAME = 'mojidon-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -20,9 +20,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(
       keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-    ))
+    )).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
@@ -31,13 +30,39 @@ self.addEventListener('fetch', (event) => {
   // Firebase等クロスオリジンの通信はキャッシュ対象外(SDK/DB通信はそのまま素通し)
   if (url.origin !== self.location.origin) return;
 
+  const isAppCode =
+    event.request.mode === 'navigate' ||
+    url.pathname.endsWith('.html') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css');
+
+  if (isAppCode) {
+    // HTML/JS/CSSはネットワークを優先し、更新後も古いコードを使い続けない。
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            event.waitUntil(
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy))
+            );
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
       return fetch(event.request).then((response) => {
         if (response.ok) {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          event.waitUntil(
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy))
+          );
         }
         return response;
       });
